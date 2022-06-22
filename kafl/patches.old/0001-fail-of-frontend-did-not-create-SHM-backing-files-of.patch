@@ -1,0 +1,66 @@
+From df49387240575e5fd1563c01822d2cd3e31fbde8 Mon Sep 17 00:00:00 2001
+From: Steffen Schulz <steffen.schulz@intel.com>
+Date: Fri, 3 Jul 2020 01:34:44 +0200
+Subject: [PATCH] fail of frontend did not create SHM backing files of expected
+ size
+
+By failing here we force a synchronization with the frontend
+---
+ pt/interface.c | 10 ++++++----
+ pt/interface.h |  5 +++--
+ 2 files changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/pt/interface.c b/pt/interface.c
+index f077be6d..c5a8abab 100644
+--- a/pt/interface.c
++++ b/pt/interface.c
+@@ -207,8 +207,9 @@ static int kafl_guest_create_memory_bar(kafl_mem_state *s, int region_num, uint6
+ 	int fd;
+ 	struct stat st;
+ 	
+-	fd = open(file, O_CREAT|O_RDWR, S_IRWXU|S_IRWXG|S_IRWXO);
+-	assert(ftruncate(fd, bar_size) == 0);
++	// abort if frontend failed to setup a sufficiently big SHM file
++	fd = open(file, O_RDWR, S_IRWXU|S_IRWXG|S_IRWXO);
++	assert(fd != -1);
+ 	stat(file, &st);
+ 	QEMU_PT_DEBUG(INTERFACE_PREFIX, "new shm file: (max size: %lx) %lx", bar_size, st.st_size);
+ 	
+@@ -236,8 +237,9 @@ static int kafl_guest_setup_bitmap(kafl_mem_state *s, uint32_t bitmap_size, Erro
+ 	int fd;
+ 	struct stat st;
+ 	
+-	fd = open(s->bitmap_file, O_CREAT|O_RDWR, S_IRWXU|S_IRWXG|S_IRWXO);
+-	assert(ftruncate(fd, bitmap_size) == 0);
++	// abort if frontend failed to setup a sufficiently big SHM file
++	fd = open(s->bitmap_file, O_RDWR, S_IRWXU|S_IRWXG|S_IRWXO);
++	assert(fd != -1);
+ 	stat(s->bitmap_file, &st);
+ 	assert(bitmap_size == st.st_size);
+ 	ptr = mmap(0, bitmap_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+diff --git a/pt/interface.h b/pt/interface.h
+index 10709c6d..a66b6ef0 100644
+--- a/pt/interface.h
++++ b/pt/interface.h
+@@ -13,8 +13,8 @@
+ 
+ #define INTEL_PT_MAX_RANGES			4
+ 
+-#define DEFAULT_KAFL_BITMAP_SIZE	0x10000
+-#define DEFAULT_EDGE_FILTER_SIZE	0x1000000
++#define DEFAULT_KAFL_BITMAP_SIZE	(64 << 10)
++#define DEFAULT_EDGE_FILTER_SIZE	( 2 << 23)
+ 
+ #define PROGRAM_SIZE				(128 << 20) /* 128MB Application Data */
+ #define PAYLOAD_SIZE				(128 << 10)	/* 128KB Payload Data */
+@@ -28,6 +28,7 @@
+ 
+ #define KAFL_PROTO_ACQUIRE			'R'
+ #define KAFL_PROTO_RELEASE			'D'
++#define KAFL_PROTO_STARVED			'd'
+ 
+ #define KAFL_PROTO_RELOAD			'L'
+ #define KAFL_PROTO_ENABLE_SAMPLING	'S'
+-- 
+2.25.1
+

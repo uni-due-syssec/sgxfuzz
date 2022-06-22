@@ -1,0 +1,67 @@
+diff --git a/sdk/sign_tool/SignTool/enclave_creator_sign.cpp b/sdk/sign_tool/SignTool/enclave_creator_sign.cpp
+index 207bd0cf..0f61f775 100644
+--- a/sdk/sign_tool/SignTool/enclave_creator_sign.cpp
++++ b/sdk/sign_tool/SignTool/enclave_creator_sign.cpp
+@@ -159,6 +159,19 @@ int EnclaveCreatorST::add_enclave_page(sgx_enclave_id_t enclave_id, void *src, u
+         return SGX_ERROR_UNEXPECTED;
+     }
+ 
++    {
++        printf("SGX: enclave_add_page %lx %hx\n%lx: ", 0x550000000UL + offset, 0, (uint64_t) data_block);
++        for (size_t i = 16; i < sizeof(data_block); i++)
++            printf("%02X", data_block[i]);
++        printf("\n%lx: ", (uint64_t) src);
++        for (size_t i = 0; i < SE_PAGE_SIZE; i++)
++            if (src == nullptr)
++                printf("00");
++            else
++                printf("%02X", ((unsigned char*) src)[i]);
++        printf("\n");
++    }
++
+     /* If the page need to eextend, do eextend. */
+     if((attr & ADD_EXTEND_PAGE) == ADD_EXTEND_PAGE)
+     {
+diff --git a/sdk/sign_tool/SignTool/sign_tool.cpp b/sdk/sign_tool/SignTool/sign_tool.cpp
+index 145a2efa..f0581d0f 100644
+--- a/sdk/sign_tool/SignTool/sign_tool.cpp
++++ b/sdk/sign_tool/SignTool/sign_tool.cpp
+@@ -130,8 +130,8 @@ static bool get_enclave_info(BinParser *parser, bin_fmt_t *bf, uint64_t * meta_o
+     if(metadata->magic_num == METADATA_MAGIC && is_dump_mode == false && resign_flag == false)
+     {
+         se_trace(SE_TRACE_ERROR, ENCLAVE_ALREADY_SIGNED_ERROR);
++    } else
+         return false;
+-    }
+ 
+     *bf = parser->get_bin_format();
+     *meta_offset = meta_rva;
+@@ -182,12 +182,12 @@ static bool measure_enclave(uint8_t *hash, const char *dllpath, const xml_parame
+     }
+ 
+     // generate metadata
+-    CMetadata meta(metadata, parser.get());
+-    if(meta.build_metadata(parameter) == false)
+-    {
+-        close_handle(fh);
+-        return false;
+-    }
++//    CMetadata meta(metadata, parser.get());
++//    if(meta.build_metadata(parameter) == false)
++//    {
++//        close_handle(fh);
++//        return false;
++//    }
+ 
+     // Collect enclave info
+     if(get_enclave_info(parser.get(), &bin_fmt, meta_offset, false, ENABLE_RESIGN(option_flag_bits)) == false)
+@@ -195,6 +195,9 @@ static bool measure_enclave(uint8_t *hash, const char *dllpath, const xml_parame
+         close_handle(fh);
+         return false;
+     }
++    const uint8_t *base_addr = parser->get_start_addr();
++    *metadata = *GET_PTR(metadata_t, base_addr, *meta_offset);
++
+     bool no_rel = false;
+     if (bin_fmt == BF_ELF64)
+     {

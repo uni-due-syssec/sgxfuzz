@@ -1,0 +1,8 @@
+enclave {
+
+    from "sgx_tstdc.edl" import sgx_oc_cpuidex;
+
+    trusted {
+        public void fuzz_ecall([in, string] char* str);
+    };
+};

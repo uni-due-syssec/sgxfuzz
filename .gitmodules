@@ -1,0 +1,12 @@
+[submodule "QEMU-Nyx"]
+	path = QEMU-Nyx
+	url = https://github.com/nyx-fuzz/QEMU-Nyx.git
+[submodule "KVM-Nyx"]
+	path = KVM-Nyx
+	url = https://github.com/nyx-fuzz/KVM-Nyx.git
+[submodule "zydis"]
+	path = zydis
+	url = https://github.com/zyantific/zydis.git
+[submodule "enclave-dumper/linux-sgx-sign"]
+	path = enclave-dumper/linux-sgx-sign
+	url = https://github.com/intel/linux-sgx

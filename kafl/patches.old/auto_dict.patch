@@ -1,0 +1,80 @@
+diff --git a/kAFL-Fuzzer/fuzzer/technique/bitflip.py b/kAFL-Fuzzer/fuzzer/technique/bitflip.py
+index 6561bff..c1d1320 100644
+--- a/kAFL-Fuzzer/fuzzer/technique/bitflip.py
++++ b/kAFL-Fuzzer/fuzzer/technique/bitflip.py
+@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ """
+ 
++from common.debug import log_redq
+ 
+ def walking_bits_execs(data, skip_null=False, effector_map=None):
+     execs=0
+@@ -31,15 +32,61 @@ def walking_bits_execs(data, skip_null=False, effector_map=None):
+ 
+ 
+ def mutate_seq_walking_bits(data, func, skip_null=False, effector_map=None):
+-    for i in range(len(data) * 8):
++
++    # autodict learning
++    orig_bitmap, _ = func(data)
++    prev_bitmap = orig_bitmap
++    a_dict = []
++    a_word = bytearray()
++
++    bits = 8*len(data)
++    for i in range(bits):
++        pos = i // 8
++        bit = i % 8
++
+         if effector_map:
+-            if not effector_map[i // 8]:
++            if not effector_map[pos]:
+                 continue
+-        if data[i // 8] == 0x00 and skip_null:
++
++        if data[pos] == 0x00 and skip_null:
+             continue
+-        data[i // 8] ^= (0x80 >> (i % 8))
+-        func(data, label="afl_flip_1/1")
+-        data[i // 8] ^= (0x80 >> (i % 8))
++
++        data[pos] ^= (0x80 >> bit)
++        bitmap, _ = func(data, label="afl_flip_1/1")
++        data[pos] ^= (0x80 >> bit)
++
++        # AFL auto-dict learning. Record byte sequences where toggling the last bit always 
++        # results in the same new path, i.e. the current sequence is probably a magic word.
++        AFL_AUTODICT_MIN_LEN=3
++        AFL_AUTODICT_MAX_LEN=32
++
++        if bit == 7:
++            # end of payload, collect anything recorded til here
++            if i == bits - 1 and bitmap == prev_bitmap:
++                if len(a_word) < AFL_AUTODICT_MAX_LEN:
++                    a_word += data[pos]
++
++                if len(a_word) >= AFL_AUTODICT_MIN_LEN:
++                    auto_dict.append((len(a_word), a_word))
++
++            # bitmap changed, store any non-trivial bytes to dictionary + reset
++            elif bitmap != prev_bitmap:
++                if len(a_word) >= AFL_AUTODICT_MIN_LEN:
++                    auto_dict.append((len(a_word), a_word))
++
++                a_word = bytearray()
++                prev_bitmap = bitmap
++
++            # bitmap is different from original - keep collecting string
++            elif bitmap != orig_bitmap:
++                if len(a_word) >= AFL_AUTODICT_MIN_LEN and len(a_word) <= AFL_AUTODICT_MAX_LEN:
++                       a_word += data[pos]
++
++    log_redq("AFL Dict-Auto: collected %d touples.." % len(a_dict))
++    if len(a_dict) > 0:
++        log_redq(repr(a_dict))
++
++    return a_dict
+ 
+ 
+ def mutate_seq_two_walking_bits(data, func, skip_null=False, effector_map=None):

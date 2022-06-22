@@ -1,0 +1,12 @@
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index f4a5e1c1a..2b5ee4343 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -7505,6 +7505,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
+ 				break;
+ 			case (KVM_EXIT_KAFL_RELEASE-KAFL_EXIT_OFFSET):
+ 				vcpu->run->exit_reason = KVM_EXIT_KAFL_RELEASE;
++				vcpu->run->hypercall.args[0] = a1;
+ 				break;
+ 			case (KVM_EXIT_KAFL_SUBMIT_CR3-KAFL_EXIT_OFFSET):
+ 				vcpu->run->exit_reason = KVM_EXIT_KAFL_SUBMIT_CR3;

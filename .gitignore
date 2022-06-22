@@ -1,0 +1,7 @@
+*.so
+*.fuzz
+
+build/
+liblibnyx_dummy.so
+
+fuzzer.log

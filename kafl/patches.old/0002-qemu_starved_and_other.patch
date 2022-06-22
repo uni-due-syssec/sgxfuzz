@@ -1,0 +1,109 @@
+diff --git a/include/hw/core/cpu.h b/include/hw/core/cpu.h
+index 5ae0ff0c..7fd5b673 100644
+--- a/include/hw/core/cpu.h
++++ b/include/hw/core/cpu.h
+@@ -433,6 +433,7 @@ struct CPUState {
+     bool executing;
+     int disassembler_word_width;
+     bool intel_pt_run_trashed;
++    bool starved;
+ 
+ #ifdef CONFIG_REDQUEEN
+     void* redqueen_state[INTEL_PT_MAX_RANGES];
+diff --git a/monitor/misc.c b/monitor/misc.c
+index 134f0557..7e277695 100644
+--- a/monitor/misc.c
++++ b/monitor/misc.c
+@@ -2216,6 +2216,9 @@ static void sortcmdlist(void)
+     qsort(hmp_info_cmds, ARRAY_SIZE(hmp_info_cmds) - 1,
+           sizeof(*hmp_info_cmds),
+           compare_mon_cmd);
++    qsort(hmp_pt_cmds, ARRAY_SIZE(hmp_pt_cmds) - 1,
++          sizeof(*hmp_pt_cmds),
++          compare_mon_cmd);
+ }
+ 
+ void monitor_init_globals(void)
+diff --git a/pt/disassembler.c b/pt/disassembler.c
+index 22c9a8bd..a4520ece 100644
+--- a/pt/disassembler.c
++++ b/pt/disassembler.c
+@@ -256,7 +256,7 @@ static bool is_interessting_lea_at(disassembler_t* self, uint64_t addr){
+ 
+     if(res){
+       if(!strcmp(op2.index,"rbp") || !strcmp(op2.index,"ebp") || !strcmp(op2.index,"rip")){ 
+-        QEMU_PT_PRINTF(REDQUEEN_PREFIX, "got boring index");
++        QEMU_PT_DEBUG(REDQUEEN_PREFIX, "got boring index");
+         res = false;
+       } //don't instrument local stack offset computations
+     }
+@@ -329,19 +329,19 @@ static cofi_type opcode_analyzer(disassembler_t* self, cs_insn *ins){
+ 			  set_rq_instruction(self->redqueen_state, ins->address);
+       }
+ 		  if(ins->id == X86_INS_LEA && is_interessting_lea_at(self, ins->address)){
+-		      QEMU_PT_PRINTF(REDQUEEN_PREFIX, "hooking lea %lx", ins->address);
++		      QEMU_PT_DEBUG(REDQUEEN_PREFIX, "hooking lea %lx", ins->address);
+ 			    set_rq_instruction(self->redqueen_state, ins->address);
+       }
+ 		  if(ins->id == X86_INS_SUB && is_interessting_sub_at(self, ins->address)){
+-		      QEMU_PT_PRINTF(REDQUEEN_PREFIX, "hooking sub %lx", ins->address);
++		      QEMU_PT_DEBUG(REDQUEEN_PREFIX, "hooking sub %lx", ins->address);
+ 			    set_rq_instruction(self->redqueen_state, ins->address);
+       }
+ 		  if(ins->id == X86_INS_ADD && is_interessting_add_at(self, ins->address)){
+-		      QEMU_PT_PRINTF(REDQUEEN_PREFIX, "hooking add %lx", ins->address);
++		      QEMU_PT_DEBUG(REDQUEEN_PREFIX, "hooking add %lx", ins->address);
+ 			    set_rq_instruction(self->redqueen_state, ins->address);
+       }
+ 		  if(ins->id == X86_INS_XOR && is_interessting_xor_at(self, ins->address)){
+-		      QEMU_PT_PRINTF(REDQUEEN_PREFIX, "hooking xor %lx", ins->address);
++		      QEMU_PT_DEBUG(REDQUEEN_PREFIX, "hooking xor %lx", ins->address);
+ 			    set_rq_instruction(self->redqueen_state, ins->address);
+       }
+       if( ins->id != X86_INS_LEA && (ins->id == X86_INS_RET || ins->id == X86_INS_POP || 
+diff --git a/pt/hypercall.c b/pt/hypercall.c
+index 842a90b6..bdff2189 100644
+--- a/pt/hypercall.c
++++ b/pt/hypercall.c
+@@ -294,7 +294,11 @@ void handle_hypercall_kafl_release(struct kvm_run *run, CPUState *cpu){
+ 
+ 			hypercall_snd_char(KAFL_PROTO_RELEASE);
+ 		} else {
+-
++			QEMU_PT_DEBUG(CORE_PREFIX, "Got STARVED notification (num=%llu)", run->hypercall.args[0]);
++			if (run->hypercall.args[0] > 0)
++				cpu->starved = true;
++			else
++				cpu->starved = false;
+ 			synchronization_disable_pt(cpu);
+ 		}
+ 	}
+diff --git a/pt/synchronization.c b/pt/synchronization.c
+index ca63a5c8..b6b2c1de 100644
+--- a/pt/synchronization.c
++++ b/pt/synchronization.c
+@@ -52,9 +52,13 @@ void synchronization_lock(CPUState *cpu){
+ 			//fprintf(stderr, "KAFL_PROTO_PT_TRASHED\n");
+ 			hypercall_snd_char(KAFL_PROTO_PT_TRASHED);
+ 			cpu->intel_pt_run_trashed = false;
+-		} 
++		}
+ 		else {
+-			hypercall_snd_char(KAFL_PROTO_ACQUIRE);
++			if(cpu->starved) {
++				hypercall_snd_char(KAFL_PROTO_STARVED);
++			} else {
++				hypercall_snd_char(KAFL_PROTO_ACQUIRE);
++			}
+ 		}
+ 	}
+ 	else{
+@@ -65,7 +69,7 @@ void synchronization_lock(CPUState *cpu){
+ 	pthread_cond_wait(&synchronization_lock_condition, &synchronization_lock_mutex);
+ 	synchronization_kvm_loop_waiting = false;
+ 	pthread_mutex_unlock(&synchronization_lock_mutex);
+-}	
++}
+ 
+ void synchronization_reload_vm(void){
+ 	CPUState *cpu = qemu_get_cpu(0);
