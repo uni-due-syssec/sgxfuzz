@@ -141,3 +141,7 @@ def is_int(value):
 
 def json_dumper(obj):
     return obj.__dict__
+
+def print_hprintf(msg):
+    sys.stdout.write(color.FLUSH_LINE + color.HPRINTF + msg + color.ENDC)
+    sys.stdout.flush()

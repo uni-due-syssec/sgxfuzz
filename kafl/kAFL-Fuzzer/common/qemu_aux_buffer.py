@@ -5,45 +5,30 @@ import struct
 
 from common.util import strdump
 from collections import namedtuple
+from enum import IntEnum
 
 result_tuple = namedtuple('result_tuple', [
     'state',
-    'tmp_snap',
-
-    'pad1',
-    'pad2',
-
-    'bb_cov',
-
-    'pad3',
-    'pad4',
-
-    'hprintf',
     'exec_done',
-
-    'crash_found',
-    'asan_found',
-
-    'timeout_found',
+    'exec_code',
     'reloaded',
 
     'pt_overflow',
-    'runtime_sec',
-
     'page_fault',
-    'success',
+    'tmp_snap',
+    'pad3',
 
-    'runtime_usec',
     'page_fault_addr',
     'dirty_pages',
     'pt_trace_size',
-
-    'payload_corrupted',
+    'bb_cov',
+    'runtime_usec',
+    'runtime_sec',
     ])
 
 my_magic = 0x54502d554d4551
-my_version = 0x1
-my_hash = 0x51
+my_version = 0x3
+my_hash = 0x54
 
 HEADER_SIZE = 128
 CAP_SIZE = 256
@@ -57,7 +42,17 @@ CONFIG_OFFSET = CAP_OFFSET + CAP_SIZE
 STATUS_OFFSET = CONFIG_OFFSET + CONFIG_SIZE
 MISC_OFFSET = STATUS_OFFSET + STATUS_SIZE
 
-class qemu_aux_buffer:
+class QemuAuxRC(IntEnum):
+    SUCCESS = 0
+    CRASH = 1
+    HPRINTF = 2
+    TIMEOUT = 3
+    INPUT_BUF_WRITE = 4
+    ABORT = 5
+    SANITIZER = 6
+    STARVED = 7
+
+class QemuAuxBuffer:
 
     def __init__(self, file):
         self.aux_buffer_fd = os.open(file, os.O_RDWR | os.O_SYNC)
@@ -65,20 +60,20 @@ class qemu_aux_buffer:
         self.current_timeout = None
 
     def validate_header(self):
-        magic = (struct.unpack('L', self.aux_buffer[0:8])[0])
-        version = (struct.unpack('H', self.aux_buffer[8:10])[0])
-        hash = (struct.unpack('H', self.aux_buffer[10:12])[0])
+        qemu_magic = (struct.unpack('L', self.aux_buffer[0:8])[0])
+        qemu_version = (struct.unpack('H', self.aux_buffer[8:10])[0])
+        qemu_hash = (struct.unpack('H', self.aux_buffer[10:12])[0])
 
-        if magic != my_magic:
-            logging.warning("MAGIC MISMATCH: %x != %x\n" % (magic, my_magic))
+        if qemu_magic != my_magic:
+            logger.error("Magic mismatch: %x != %x" % (qemu_magic, my_magic))
             return False
 
-        if version != my_version:
-            logging.warning("VERSION MISMATCH: %x != %x\n" % (version, my_version))
+        if qemu_version != my_version:
+            logger.error("Version mismatch: %x != %x" % (qemu_version, my_version))
             return False 
 
-        if hash != my_hash:
-            logging.warning("HASH MISMATCH: %x != %x\n" % (hash, my_hash))
+        if qemu_hash != my_hash:
+            logger.error("Hash mismatch: %x != %x" % (qemu_hash, my_hash))
             return False
 
         return True
@@ -96,7 +91,7 @@ class qemu_aux_buffer:
 
     def get_result(self):
         return result_tuple._make(
-                struct.unpack_from('B?BBIBB ?? ?? ?? ?B ?B IQII?',
+                struct.unpack_from('B?B? ???? QIIIII',
                                    self.aux_buffer,
                                    offset=STATUS_OFFSET))
 

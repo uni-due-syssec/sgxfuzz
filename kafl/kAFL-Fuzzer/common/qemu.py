@@ -16,19 +16,24 @@ import struct
 import subprocess
 import time
 import sys
+import shutil
 
 from common.execution_result import ExecutionResult
-from common.qemu_aux_buffer import qemu_aux_buffer
-from common.util import read_binary_file, atomic_write, strdump
+from common.util import read_binary_file, atomic_write, strdump, print_hprintf
 from common.log import FileFormatter
 from fuzzer.technique.redqueen.workdir import RedqueenWorkdir
+from common.qemu_aux_buffer import QemuAuxBuffer
+from common.qemu_aux_buffer import QemuAuxRC as RC
 
-
+class QemuIOException(Exception):
+        """Exception raised when Qemu interaction fails"""
+        pass
 class qemu:
 
     def __init__(self, qid, config, debug_mode=False, notifiers=True):
 
         self.debug_mode = debug_mode
+        self.ijonmap_size = 0x1000 # quick fix - bitmaps are not processed!
         self.agent_size = config.config_values['AGENT_MAX_SIZE']
         self.bitmap_size = config.config_values['BITMAP_SHM_SIZE']
         self.payload_size = config.config_values['PAYLOAD_SHM_SIZE']
@@ -55,6 +60,7 @@ class qemu:
 
         self.binary_filename = self.config.argument_values['work_dir'] + "/program"
         self.bitmap_filename = self.config.argument_values['work_dir'] + "/bitmap_" + self.qemu_id
+        self.ijonmap_filename = self.config.argument_values['work_dir'] + "/ijon_" + self.qemu_id
         self.payload_filename = self.config.argument_values['work_dir'] + "/payload_" + self.qemu_id
         self.control_filename = self.config.argument_values['work_dir'] + "/interface_" + self.qemu_id
         self.qemu_trace_log = self.config.argument_values['work_dir'] + "/qemu_trace_%s.log" % self.qemu_id
@@ -62,6 +68,9 @@ class qemu:
         self.pipe_serial = not self.config.argument_values['no_pipe_serial']
         self.qemu_hprintf_log = self.config.argument_values['work_dir'] + "/qemu_hprintf_%s.log" % self.qemu_id
         self.pipe_hprintf = not self.config.argument_values['no_pipe_hprintf']
+
+        self.hprintf_log =  True # FIXME self.config.log_hprintf or self.config.log_crashes
+        self.hprintf_logfile = self.config.argument_values['work_dir'] + "/hprintf_%s.log" % self.qemu_id
 
         self.redqueen_workdir = RedqueenWorkdir(self.qemu_id, config)
         self.redqueen_workdir.init_dir()
@@ -78,13 +87,12 @@ class qemu:
         self.cmd += " -enable-kvm" \
                     " -m " + str(config.argument_values['mem']) + \
                     " -net none" \
-                    " -chardev socket,server,nowait,path=" + self.control_filename + \
-                    ",id=kafl_interface" \
-                    " -device kafl,chardev=kafl_interface" + \
+                    " -chardev socket,server,id=nyx_socket,path=" + self.control_filename + \
+                    " -device nyx,chardev=nyx_socket" + \
                     ",workdir=" + self.config.argument_values['work_dir'] + \
-                    ",worker_id=" + self.qemu_id + \
-                    ",sharedir=/tmp/" + \
-                    ",bitmap_size=" + str(self.bitmap_size)
+                    ",worker_id=%s" % self.qemu_id + \
+                    ",bitmap_size=" + str(self.bitmap_size) + \
+                    ",input_buffer_size=" + str(self.payload_size)
 
         if self.config.argument_values['dump_pt']:
             self.cmd += ",dump_pt_trace"
@@ -193,7 +201,8 @@ class qemu:
             self.tracedump_filename,
             self.control_filename,
             self.binary_filename,
-            self.bitmap_filename]:
+            self.bitmap_filename,
+            self.ijonmap_filename]:
             try:
                 os.remove(tmp_file)
             except:
@@ -268,32 +277,54 @@ class qemu:
 
         self.persistent_runs = 0
 
-        if self.qemu_id == "0" or self.qemu_id == "1337":  ## 1337 is debug instance!
-            logging.info(("QEMU%s Launching virtual machine...CMD:\n" % self.qemu_id) + ' '.join(self.cmd))
+        # SHM files must exist on Qemu launch
+        self.ijon_shm_f     = os.open(self.ijonmap_filename, os.O_RDWR | os.O_SYNC | os.O_CREAT)
+        self.kafl_shm_f     = os.open(self.bitmap_filename, os.O_RDWR | os.O_SYNC | os.O_CREAT)
+        self.fs_shm_f       = os.open(self.payload_filename, os.O_RDWR | os.O_SYNC | os.O_CREAT)
+
+        os.ftruncate(self.ijon_shm_f, self.ijonmap_size)
+        os.ftruncate(self.kafl_shm_f, self.bitmap_size)
+        os.ftruncate(self.fs_shm_f, self.payload_size)
+
+        if self.qemu_id not in [0, 1337]:
+            final_cmdline = ""
         else:
-            logging.info("QEMU%s Launching virtual machine..." % self.qemu_id)
+            final_cmdline = "\n"
+            for arg in self.cmd:
+                if arg[0] == '-':
+                    final_cmdline += '\n\t' + arg
+                else:
+                    final_cmdline += ' ' + arg
+
+            # delayed Qemu startup - some nasty race condition when launching too many at once
+            if self.qemu_id not in [0, 1337]:
+                time.sleep(4 + 0.1*float(self.qemu_id))
+
+        logging.info("%s Launching virtual machine...%s" % (self, final_cmdline))
 
         # Launch Qemu. stderr to stdout, stdout is logged on VM exit
         # os.setpgrp() prevents signals from being propagated to Qemu, instead allowing an
         # organized shutdown via async_exit()
         self.process = subprocess.Popen(self.cmd,
-                                        preexec_fn=os.setpgrp)
-        # TODO: shutdown() fails to capture libxdc fprintf() - why?
-        # stdin=subprocess.PIPE,
-        # stdout=subprocess.PIPE,
-        # stderr=subprocess.STDOUT)
-        # stdin=subprocess.DEVNULL,
-        # stdout=subprocess.DEVNULL,
-        # stderr=subprocess.DEVNULL)
+                preexec_fn=os.setpgrp,
+                stdin=subprocess.DEVNULL)
+                #stdin=subprocess.PIPE,
+                #stdout=subprocess.PIPE,
+                #stderr=subprocess.STDOUT)
 
         try:
             self.__qemu_connect()
             self.__qemu_handshake()
         except (OSError, BrokenPipeError) as e:
             if not self.exiting:
-                logging.error(("QEMU%s Fatal error: Failed to launch Qemu: " % self.qemu_id) + str(e))
+                logging.error("%s Failed to launch Qemu: %s" % (self, str(e)))
                 self.shutdown()
             return False
+
+        logging.debug("%s Handshake done." % self)
+
+        self.qemu_aux_buffer.set_reload_mode(True)
+        self.qemu_aux_buffer.set_timeout(0.8)
 
         return True
 
@@ -310,32 +341,41 @@ class qemu:
         self.control.send(b'x')
         self.control.recv(1)
 
+    def wait_qemu(self):
+        self.control.recv(1)
+
     def __qemu_handshake(self):
 
-        if self.config.argument_values['agent']:
-            self.__set_agent()
+        self.wait_qemu()
 
-        self.run_qemu()
-
-        self.qemu_aux_buffer = qemu_aux_buffer(self.qemu_aux_buffer_filename)
+        self.qemu_aux_buffer = QemuAuxBuffer(self.qemu_aux_buffer_filename)
         if not self.qemu_aux_buffer.validate_header():
-            logging.error("QEMU%s Invalid header in qemu_aux_buffer.py. Abort." % self.qemu_id)
+            logging.error("%s Invalid header in qemu_aux_buffer.py. Abort." % self)
             self.async_exit()
 
         while self.qemu_aux_buffer.get_state() != 3:
-            logging.info("QEMU%s Waiting for target to enter fuzz mode.." % self.qemu_id)
+            logging.debug("%s Waiting for target to enter fuzz mode.." % self)
+            result = self.qemu_aux_buffer.get_result()
+            if result.exec_code == RC.ABORT:
+                self.handle_habort()
+            if result.exec_code == RC.HPRINTF:
+                self.handle_hprintf()
             self.run_qemu()
 
-        logging.info("QEMU%s Qemu is ready." % self.qemu_id)
+        print("self.payload_size: " + str(self.payload_size))
+        print("self.payload_filename: " + str(os.path.getsize(self.payload_filename)))
 
-        self.qemu_aux_buffer.set_reload_mode(True)
-        # self.qemu_aux_buffer.set_trace_mode(True)
-        if not self.get_timeout():
-            self.set_timeout(0.8)
 
-        # self.run_qemu()
+        # Qemu tends to truncate / resize the files. Not sure why..
+        assert(self.payload_size == os.path.getsize(self.payload_filename))
+        assert(self.bitmap_size == os.path.getsize(self.bitmap_filename))
+        assert(self.ijonmap_size == os.path.getsize(self.ijonmap_filename))
+        self.kafl_shm = mmap.mmap(self.kafl_shm_f, 0)
+        self.c_bitmap = (ctypes.c_uint8 * self.bitmap_size).from_buffer(self.kafl_shm)
+        self.fs_shm = mmap.mmap(self.fs_shm_f, 0)
 
-        return
+        self.run_qemu()
+
 
     def __qemu_connect(self):
         # Note: setblocking() disables the timeout! settimeout() will automatically set blocking!
@@ -351,23 +391,31 @@ class qemu:
             except socket.error:
                 if self.process.returncode is not None:
                     raise
+            logging.debug("%s Waiting for Qemu connect.." % self)
+            time.sleep(0.1)
 
-        self.kafl_shm_f = os.open(self.bitmap_filename, os.O_RDWR | os.O_SYNC | os.O_CREAT)
-        self.fs_shm_f = os.open(self.payload_filename, os.O_RDWR | os.O_SYNC | os.O_CREAT)
+    def handle_hprintf(self):
+        msg = self.qemu_aux_buffer.get_misc_buf()
+        msg = msg.decode('latin-1', errors='backslashreplace')
 
-        open(self.tracedump_filename, "wb").close()
+        if self.hprintf_log:
+            with open(self.hprintf_logfile, "a") as f:
+                f.write(msg)
+        elif not self.config.quiet:
+            print_hprintf(msg)
 
-        with open(self.binary_filename, 'bw') as f:
-            os.ftruncate(f.fileno(), self.agent_size)
+    def handle_habort(self):
+        msg = self.qemu_aux_buffer.get_misc_buf()
+        msg = msg.decode('latin-1', errors='backslashreplace')
+        msg = "Guest ABORT: %s" % msg
 
-        os.ftruncate(self.kafl_shm_f, self.bitmap_size)
-        os.ftruncate(self.fs_shm_f, self.payload_size)
+        logging.error("%s Guest ABORT: %s" % (self, msg))
+        if self.hprintf_log:
+            with open(self.hprintf_logfile, "a") as f:
+                f.write(msg)
 
-        self.kafl_shm = mmap.mmap(self.kafl_shm_f, 0)
-        self.c_bitmap = (ctypes.c_uint8 * self.bitmap_size).from_buffer(self.kafl_shm)
-        self.fs_shm = mmap.mmap(self.fs_shm_f, 0)
-
-        return True
+        self.run_qemu()
+        raise QemuIOException(msg)
 
     # Fully stop/start Qemu instance to store logs + possibly recover
     def restart(self):
@@ -421,6 +469,7 @@ class qemu:
 
         result = None
         old_address = 0
+        start_time = time.time()
         self.persistent_runs += 1
         # start_time = time.time()
 
@@ -432,7 +481,7 @@ class qemu:
             #            if result.pt_overflow:
             #                logging.warning("PT trashed!")
 
-            if result.hprintf:
+            if result.exec_code == RC.HPRINTF:
                 msg = strdump(self.qemu_aux_buffer.get_misc_buf()[:-1], verbatim=True).rstrip()
                 if self.pipe_hprintf:
                     with open(self.qemu_hprintf_log, "w+") as f:
@@ -442,43 +491,31 @@ class qemu:
                 logging.info(("QEMU%s hprintf:\n" % self.qemu_id) + msg.rstrip())
                 continue
 
-            if result.success or result.crash_found or result.asan_found or result.timeout_found:
+            if result.exec_code == RC.ABORT:
+                self.handle_habort()
+
+            if result.exec_done:
                 break
 
             if result.page_fault:
+                logging.warn("%s Page fault encountered!" % self)
                 if result.page_fault_addr == old_address:
-                    logging.warning("QEMU%s Failed to resolve page after second execution! Qemu status:\n%s" % (self.qemu_id, str(result._asdict())))
+                    logging.error("%s Failed to resolve page after second execution! Qemu status:\n%s" % (self, str(result._asdict())))
                     break
                 old_address = result.page_fault_addr
                 self.qemu_aux_buffer.dump_page(result.page_fault_addr)
-
-        if result.runtime_sec > 0:
-            # Qemu timer overflow when elapsing seconds
-            MAX_ULONG = 4294967295
-            fixed_usec = result.runtime_usec - MAX_ULONG
-            # print("perf: orig: <%d,%d> => %.3fms ??" % (result.runtime_sec, result.runtime_usec, result.runtime_sec*1000 + fixed_usec/1000))
-        else:
-            fixed_usec = result.runtime_usec
-            # print("perf: orig: <%d,%d> => %.3fms ??" % (result.runtime_sec, result.runtime_usec, result.runtime_sec*1000 + fixed_usec/1000))
-
-        # runtime = result.runtime_sec*1000 + fixed_usec/1000
-        runtime = max(self.timeout_min, result.runtime_sec + fixed_usec / 1000000)
 
         # record highest seen BBs
         self.bb_seen = max(self.bb_seen, result.bb_cov)
 
         res = ExecutionResult(
-            self.c_bitmap, self.bitmap_size,
-            self.exit_reason(result), runtime)
-        # res = ExecutionResult.bitmap_from_bytearray(
-        #        bytearray(self.c_bitmap), self.exit_reason(result), time.time() - start_time)
+                self.c_bitmap, self.bitmap_size,
+                self.exit_reason(result), time.time() - start_time)
 
-        if result.success > 1:
+        if result.exec_code == RC.STARVED:
             res.starved = True
 
         if self.qemu_aux_buffer.get_misc_buf().startswith(b"STARVED"):
-            # _starved, expected_len, *rest = result.get_misc_buf().split("|")
-            # res.starved = True
             res.make_starve_not_crash()
 
         # self.audit(res.copy_to_array())
@@ -506,15 +543,19 @@ class qemu:
                 int(self.qemu_id), new_bytes, new_bits, self.alt_edges))
 
     def exit_reason(self, result):
-        if result.crash_found:
+        if result.exec_code == RC.CRASH:
             return "crash"
-        elif result.timeout_found:
+        if result.exec_code == RC.TIMEOUT:
             return "timeout"
-        elif result.asan_found:
+        elif result.exec_code == RC.SANITIZER:
             return "kasan"
-        else:
+        elif result.exec_code == RC.SUCCESS:
             return "regular"
-
+        elif result.exec_code == RC.STARVED:
+            return "regular"
+        else:
+            raise QemuIOException("Unknown QemuAuxRC code")
+    
     def execute_in_trace_mode(self, trace_timeout=None):
         logging.info("QEMU%s Performing trace iteration..." % self.qemu_id)
         exec_res = None
