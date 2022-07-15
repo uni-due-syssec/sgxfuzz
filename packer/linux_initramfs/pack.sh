@@ -47,7 +47,7 @@ sed '/START/c\./loader' init/init_template > init/init
 chmod 755 "init/init"
 cd "init"
 
-find . -print0 | cpio --null -ov --format=newc  2> /dev/null | gzip -9 > "../init.cpio.gz" 2> /dev/null
+find . -print0 | cpio --null -ov --format=newc | gzip -9 > "../init.cpio.gz" 
 cd ../
 rm -r ./init/
 
@@ -57,7 +57,7 @@ sed '/START/c\sh' init/init_template > init/init
 chmod 755 "init/init"
 cd "init"
 
-find . -print0 | cpio --null -ov --format=newc  2> /dev/null | gzip -9 > "../init_debug_shell.cpio.gz"  2> /dev/null
+find . -print0 | cpio --null -ov --format=newc | gzip -9 > "../init_debug_shell.cpio.gz" 
 cd ../
 rm -r ./init/
 

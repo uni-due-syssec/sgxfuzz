@@ -6,11 +6,11 @@
 #include <stdlib.h>
 #include <execinfo.h>
 #include <stdbool.h>
-#include <sys/stat.h>
+#include <sys/stat.h> 
 #include <stdio.h>
 
 //#include <ucontext.h>
-#include "kafl_user.h"
+#include "nyx.h"
 #include "misc/crash_handler.h"
 #include "misc/harness_state.h"
 #include "misc/struct_synth_report.h"
@@ -25,8 +25,8 @@ char* struct_synth_report = NULL;
 void handle_asan(void);
 
 static bool file_exists (char *filename) {
-    struct stat   buffer;
-    return (stat (filename, &buffer) == 0);
+  struct stat   buffer;   
+  return (stat (filename, &buffer) == 0);
 }
 
 static bool check_early_env(void){
@@ -34,7 +34,7 @@ static bool check_early_env(void){
 }
 
 void init_crash_handling(void){
-    hprintf("======== CALLED: %s\n", __func__);
+    //hprintf("======== CALLED: %s\n", __func__);
     if(!log_content){
         log_content = malloc(0x1000);
         memset(log_content, 0x00, 0x1000);
@@ -113,7 +113,7 @@ static void set_handler(void (*handler)(int,siginfo_t *,void *)){
 
     int (*new_sigaction)(int signum, const struct sigaction *act, struct sigaction *oldact);
     new_sigaction = dlsym(RTLD_NEXT, "sigaction");
-
+        
     if(!get_harness_state()->asan_executable){
         if (new_sigaction(SIGSEGV, &action, NULL) == -1) {
             hprintf("sigsegv: sigaction");
@@ -128,12 +128,12 @@ static void set_handler(void (*handler)(int,siginfo_t *,void *)){
             _exit(1);
         }
     }
-
+    
 //    if (new_sigaction(SIGILL, &action, NULL) == -1) {
 //        hprintf("sigill: sigaction");
 //        _exit(1);
 //    }
-
+    
     if (new_sigaction(SIGABRT, &action, NULL) == -1) {
         hprintf("sigabrt: sigaction");
         _exit(1);
@@ -150,21 +150,21 @@ static void set_handler(void (*handler)(int,siginfo_t *,void *)){
         hprintf("sigsys: sigaction");
         _exit(1);
     }
-    hprintf("ALL SIGNAL HANDLERS ARE HOOKED!\n");
+    hprintf("[!] all signal handlers are hooked!\n");
     //kAFL_hypercall(HYPERCALL_KAFL_USER_ABORT, 0);
 }
 
 void config_handler(void){
     if(!get_harness_state()->asan_executable){
         set_handler(fault_handler);
-    }
+    } 
     else{
         set_handler(fault_handler_asan);
     }
 }
 
 
-/* todo: allow sigaction for SIGSEGV once (allow ASAN to set a sighandler) */
+/* todo: allow sigaction for SIGSEGV once (allow ASAN to set a sighandler) */ 
 int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact){
     int (*new_sigaction)(int signum, const struct sigaction *act, struct sigaction *oldact);
 
@@ -176,7 +176,7 @@ int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
             case SIGBUS:
             case SIGABRT:
             case SIGTRAP:
-            case SIGSYS:
+            case SIGSYS:            
             case SIGSEGV:
                 //hprintf("Target attempts to install own SIG: %d handler\n", signum);
                 return 0;
@@ -213,39 +213,39 @@ void handle_asan(void){
 }
 
 void __assert(const char *func, const char *file, int line, const char *failedexpr){
-    sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: assert: %s %s %d: %s\n", func, file, line, failedexpr);
-    kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
+        sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: assert: %s %s %d: %s\n", func, file, line, failedexpr);
+        kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
 }
 
 void _abort(void){
-    handle_asan();
-    sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: abort called: %p\n", __builtin_return_address(0));
-    kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
-    while(1){}
+        handle_asan();
+        sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: abort called: %p\n", __builtin_return_address(0));
+        kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
+        while(1){}
 }
 
 void abort(void){
-    handle_asan();
-    sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: abort called: %p\n", __builtin_return_address(0));
-    kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
-    while(1){}
+        handle_asan();
+        sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: abort called: %p\n", __builtin_return_address(0));
+        kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
+        while(1){}
 }
 
 void __abort(void){
-    handle_asan();
-    sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: abort called: %p\n", __builtin_return_address(0));
-    kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
-    while(1){}
+        handle_asan();
+        sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: abort called: %p\n", __builtin_return_address(0));
+        kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
+        while(1){}
 }
 
 void __assert_fail (const char *__assertion, const char *__file, unsigned int __line, const char *__function){
-    sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: assert: %s %s %d: %s\n", __function, __file, __line, __assertion);
-    kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
+        sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: assert: %s %s %d: %s\n", __function, __file, __line, __assertion);
+        kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
 }
 
 void __assert_perror_fail (int __errnum, const char *__file, unsigned int __line, const char *__function){
     sprintf(log_content, "HYPERCALL_KAFL_PANIC_EXTENDED: assert: %s %s %d: %d\n", __function, __file, __line, __errnum);
-    kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
+        kAFL_hypercall(HYPERCALL_KAFL_PANIC_EXTENDED, (uint64_t)log_content);
 }
 
 
@@ -268,11 +268,11 @@ void kafl_backtrace(int signal){
     nptrs = backtrace(buffer, BT_BUF_SIZE);
     //hprintf("backtrace() returned %d addresses\n", nptrs);
 
-
+    
     backtrace_symbols_fd(buffer, nptrs, fd[1]);
     close(fd[1]);
-
-
+    
+    
 /*
     char **strings = backtrace_symbols(buffer, nptrs);
     if (strings == NULL) {
@@ -281,7 +281,7 @@ void kafl_backtrace(int signal){
         return;
         //exit(EXIT_FAILURE);
     }
-*/
+*/    
 
     offset += sprintf(log_content+offset, "HYPERCALL_KAFL_PANIC_EXTENDED: %s - addresses: %d (signal:%d)\n", __func__, nptrs, signal);
 
@@ -293,7 +293,7 @@ void kafl_backtrace(int signal){
         bytes_read = read(fd[0], tmp, 511);
         //hprintf("bytes_read2: %d\n", bytes_read);
     }
-
+    
     /*
     for (j = 0; j < nptrs; j++){
         offset += sprintf(log_content+offset, "%s\n", strings[j]);

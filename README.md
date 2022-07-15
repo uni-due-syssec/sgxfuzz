@@ -9,7 +9,7 @@ binary-only approach. The prototype consists of an enclave dumper that
 extracts enclaves memory from distribution formats, a fuzzing setup to fuzz
 extracted enclave, as well as a series of scripts to perform result
 aggregation. The fuzzing setup is the core of SGXFuzz and is built upon the
-kAFL fuzzer and the Nyx snapshotting engine. We extend the existing code of
+[kAFL fuzzer](https://github.com/IntelLabs/kAFL) and the [Nyx snapshotting and fuzzing engine](https://nyx-fuzz.com). We extend the existing code of
 kAFL to accommodate our structure synthesis in Python. The Nyx fuzzing engine
 utilizes the Intel PT CPU extension to get code coverage information but does
 not contain any changes for SGXFuzz. Finally, we provide several scripts to
@@ -59,7 +59,7 @@ sudo apt install \
   python2 python3 libpixman-1-dev pax-utils bc \
   make cmake gcc g++ pkg-config unzip \
   python3-virtualenv python2-dev python3-dev \
-  libglib2.0-dev+
+  libglib2.0-dev+ cpio gzip
 ```
 
 * Then, you can use setup.sh to compile and install the components, or follow
@@ -71,7 +71,8 @@ sudo apt install \
   * (Virtual) environments for python2 and python3 and install
     * python2: configparser mmh3 lz4 psutil ipdb msgpack inotify
     * python3: six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep
-  * Install zydis (`cd zydis && cmake . && make install`)
+  * Install zydis (`cd zydis && cmake -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_CXX_FLAGS="-fPIC" . && sudo make install && dependencies/zycore && mkdir build && cd build && cmake .. && make && sudo make install `)
+  * Prepare the ramfs guest image (`cd packer/linux_initramfs/ && ./pack.sh`)
 
 
 ## Experiment workflow

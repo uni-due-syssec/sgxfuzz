@@ -5,3 +5,7 @@ build/
 liblibnyx_dummy.so
 
 fuzzer.log
+
+packer/linux_initramfs/init_debug_shell.cpio.gz
+packer/linux_initramfs/init.cpio
+packer/linux_initramfs/init.cpio.gz

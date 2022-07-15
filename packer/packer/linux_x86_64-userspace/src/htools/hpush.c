@@ -9,12 +9,11 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
-#include <libxdc.h>
 #include <string.h>
 #include <libgen.h>
 #include <string.h>
 
-#include "kafl_user.h"
+#include "nyx.h"
 
 
 #define round_up(x, y) (((x) + (y) - 1) & ~((y) - 1))
@@ -51,17 +50,17 @@ static void dump_payload(void* buffer, size_t len, const char* filename){
     //printf("%s -> ptr: %p size: %lx - %s\n", __func__, buffer, len, filename);
 
     if (!init){
-        file_obj.file_name_str_ptr = (uint64_t)filename;
+        file_obj.file_name_str_ptr = (uintptr_t)filename;
         file_obj.append = 0;
         file_obj.bytes = 0;
-        kAFL_hypercall(HYPERCALL_KAFL_DUMP_FILE, (uint64_t) (&file_obj));
+        kAFL_hypercall(HYPERCALL_KAFL_DUMP_FILE, (uintptr_t) (&file_obj));
         init=true;
     }
 
     file_obj.append = 1;
     file_obj.bytes = len;
-    file_obj.data_ptr = (uint64_t)buffer;
-    kAFL_hypercall(HYPERCALL_KAFL_DUMP_FILE, (uint64_t) (&file_obj));
+    file_obj.data_ptr = (uintptr_t)buffer;
+    kAFL_hypercall(HYPERCALL_KAFL_DUMP_FILE, (uintptr_t) (&file_obj));
 }
 
 int main(int argc, char** argv){
@@ -84,7 +83,7 @@ int main(int argc, char** argv){
     dump_payload(ptr, size, basename(argv[1]));
   }
   else{
-    hprintf("FILE NOT FOUND!\n");
+    hprintf("Error: File not found!\n");
   }
 
   return 0;

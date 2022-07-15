@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include "syscalls.h"
-#include "kafl_user.h"
+#include "nyx.h"
 #include <sys/epoll.h>
 #include <stdbool.h>
 #include <assert.h>

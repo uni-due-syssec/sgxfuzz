@@ -1,8 +1,9 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include "kafl_user.h"
+#include "nyx.h"
 #include <string.h>
+#include <inttypes.h>
 
 int main(int argc, char** argv){
 
@@ -22,10 +23,14 @@ int main(int argc, char** argv){
 
     do{
       strcpy(stream_data, argv[1]);
-      bytes = kAFL_hypercall(HYPERCALL_KAFL_REQ_STREAM_DATA, (uint64_t)stream_data);
+      bytes = kAFL_hypercall(HYPERCALL_KAFL_REQ_STREAM_DATA, (uintptr_t)stream_data);
 
+#if defined(__x86_64__)
       if(bytes == 0xFFFFFFFFFFFFFFFFUL){
-        hprintf("HYPERVISOR: ERROR\n");
+#else
+      if(bytes == 0xFFFFFFFFUL){
+#endif
+        habort("Error: Hypervisor has rejected stream buffer (file not found)");
         break;
       }
 
@@ -39,7 +44,7 @@ int main(int argc, char** argv){
 
     } while(bytes);
 
-    hprintf("%ld bytes received from hypervisor! (%s)\n", total, argv[1]);
+    hprintf("[hget] %"PRId64" bytes received from hypervisor! (%s)\n", total, argv[1]);
 
     if(f){
       fclose(f);
