@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include "kafl_user.h"
+#include "nyx.h"
 #include <string.h>
 #include <unistd.h>
 
@@ -18,10 +18,12 @@ int main(int argc, char** argv){
     return 1;
   }
 
-  
-  while(read(0, buf, sizeof(buf)-1)>0) {
+  ssize_t received = 0;
+  while((received = read(0, buf, sizeof(buf)-1))>0) {
     buf[1023] = 0;
-    hprintf("%s", buf);
+    buf[received] = 0;
+
+    hprintf("[hcat] %s", buf);
     memset(buf, 0, 1024);
   }
   return 0;
