@@ -9,7 +9,7 @@ binary-only approach. The prototype consists of an enclave dumper that
 extracts enclaves memory from distribution formats, a fuzzing setup to fuzz
 extracted enclave, as well as a series of scripts to perform result
 aggregation. The fuzzing setup is the core of SGXFuzz and is built upon the
-kAFL fuzzer and the Nyx snapshotting engine. We extend the existing code of
+[kAFL fuzzer](https://github.com/IntelLabs/kAFL) and the [Nyx snapshotting and fuzzing engine](https://nyx-fuzz.com). We extend the existing code of
 kAFL to accommodate our structure synthesis in Python. The Nyx fuzzing engine
 utilizes the Intel PT CPU extension to get code coverage information but does
 not contain any changes for SGXFuzz. Finally, we provide several scripts to
