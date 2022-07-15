@@ -59,7 +59,7 @@ sudo apt install \
   python2 python3 libpixman-1-dev pax-utils bc \
   make cmake gcc g++ pkg-config unzip \
   python3-virtualenv python2-dev python3-dev \
-  libglib2.0-dev+
+  libglib2.0-dev+ cpio gzip
 ```
 
 * Then, you can use setup.sh to compile and install the components, or follow
@@ -72,6 +72,7 @@ sudo apt install \
     * python2: configparser mmh3 lz4 psutil ipdb msgpack inotify
     * python3: six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep
   * Install zydis (`cd zydis && cmake -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_CXX_FLAGS="-fPIC" . && sudo make install && dependencies/zycore && mkdir build && cd build && cmake .. && make && sudo make install `)
+  * Prepare the ramfs guest image (`cd packer/linux_initramfs/ && ./pack.sh`)
 
 
 ## Experiment workflow
