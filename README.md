@@ -71,7 +71,7 @@ sudo apt install \
   * (Virtual) environments for python2 and python3 and install
     * python2: configparser mmh3 lz4 psutil ipdb msgpack inotify
     * python3: six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep
-  * Install zydis (`cd zydis && cmake . && make install`)
+  * Install zydis (`cd zydis && cmake -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_CXX_FLAGS="-fPIC" . && sudo make install && dependencies/zycore && mkdir build && cd build && cmake .. && make && sudo make install `)
 
 
 ## Experiment workflow
