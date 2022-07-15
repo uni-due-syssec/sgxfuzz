@@ -8,7 +8,7 @@
 
 extern "C" {
 #include "libnyx.h"
-#include "kafl_user.h"
+#include "../packer/agents/nyx.h"
 }
 
 #if !defined(ENCLAVE_PATH) || !defined(TCS_PAGE)

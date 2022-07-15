@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include "kafl_user.h"
+#include "nyx.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>

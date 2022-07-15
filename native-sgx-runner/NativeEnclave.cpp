@@ -9,7 +9,7 @@
 #include <csignal>
 
 extern "C" {
-#include "kafl_user.h"
+#include "../packer/agents/nyx.h"
 #include "libnyx.h"
 }
 

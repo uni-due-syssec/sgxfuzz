@@ -18,13 +18,14 @@
 #include <link.h>
 #include <stdbool.h>
 
-#include "kafl_user.h"
+#include "nyx.h"
 #include "misc/crash_handler.h"
 #include "misc/harness_state.h"
 
 //#define HYPERCALL_KAFL_RELEASE_DEBUG
 
 
+size_t input_buffer_size = 0;
 bool fuzz_process = false;
 
 /* dump nyx-net payload */
@@ -352,6 +353,10 @@ int _mlock(void* dst, size_t size) {
     return syscall(SYS_mlock, dst, size);
 }
 
+int _munlock(void* dst, size_t size) {
+    return syscall(SYS_munlock, dst, size);
+}
+
 int _mlockall(int flags){
     return syscall(SYS_mlockall, flags);
 }
@@ -513,14 +518,24 @@ void capabilites_configuration(bool timeout_detection, bool agent_tracing, bool 
     static bool done = false;
 
     if(!done){
-        hprintf("agent_tracing: %d\n", agent_tracing);
+        hprintf("[capablities] agent_tracing: %d\n", agent_tracing);
         /* configuration shit */
         host_config_t host_config;
         kAFL_hypercall(HYPERCALL_KAFL_GET_HOST_CONFIG, (uintptr_t)&host_config);
 
-        hprintf("host_config.bitmap_size: 0x%lx\n", host_config.bitmap_size);
-        hprintf("host_config.ijon_bitmap_size: 0x%lx\n", host_config.ijon_bitmap_size);
-        hprintf("host_config.payload_buffer_size: 0x%lx\n", host_config.payload_buffer_size);
+        if(host_config.host_magic != NYX_HOST_MAGIC){
+            habort("Error: NYX_HOST_MAGIC not found in host configuration - You are probably using an outdated version of QEMU-Nyx...");
+        }
+
+        if(host_config.host_version != NYX_HOST_VERSION){ 
+            habort("Error: NYX_HOST_VERSION not found in host configuration - You are probably using an outdated version of QEMU-Nyx...");
+        }
+
+        hprintf("[capablities] host_config.bitmap_size: 0x%"PRIx64"\n", host_config.bitmap_size);
+        hprintf("[capablities] host_config.ijon_bitmap_size: 0x%"PRIx64"\n", host_config.ijon_bitmap_size);
+        hprintf("[capablities] host_config.payload_buffer_size: 0x%"PRIx64"x\n", host_config.payload_buffer_size);
+
+        input_buffer_size = host_config.payload_buffer_size;
 
         trace_buffer = mmap((void*)NULL, host_config.bitmap_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
         memset(trace_buffer, 0xff, host_config.bitmap_size);
@@ -530,11 +545,13 @@ void capabilites_configuration(bool timeout_detection, bool agent_tracing, bool 
 
         agent_config_t agent_config = {0};
 
+        agent_config.agent_magic = NYX_AGENT_MAGIC;
+        agent_config.agent_version = NYX_AGENT_VERSION;
         agent_config.agent_timeout_detection = (uint8_t)timeout_detection;
         agent_config.agent_tracing = (uint8_t)agent_tracing;
         agent_config.agent_ijon_tracing = 1; //(uint8_t) ijon_tracing; /* fix me later */
-        agent_config.trace_buffer_vaddr = (uint64_t)trace_buffer;
-        agent_config.ijon_trace_buffer_vaddr = (uint64_t)ijon_trace_buffer;
+        agent_config.trace_buffer_vaddr = (uintptr_t)trace_buffer;
+        agent_config.ijon_trace_buffer_vaddr = (uintptr_t)ijon_trace_buffer;
 
 #ifdef NET_FUZZ
         agent_config.agent_non_reload_mode = 0; //(uint8_t) ijon_tracing; /* fix me later */
@@ -587,6 +604,10 @@ void dump_mappings(void){
 
 
   	snprintf(filename, 256, "/proc/%d/maps", getpid());
+
+	if(access(filename, R_OK) != 0){
+		return;
+	}
 
   	FILE* f = fopen(filename, "r");
     uint32_t len = 0;
@@ -645,7 +666,7 @@ int execle(const char *pathname, const char *arg, ...){
     while(1){
     }    
 }
-       
+     
 int execv(const char *pathname, char *const argv[]){
     hprintf("ATTEMPT TO %s?!!!\n", __func__);
     while(1){
@@ -768,35 +789,39 @@ void nyx_init_start(void){
     }
 #endif
 
+    if(input_buffer_size == 0){
+        habort("Error: The size of the input buffer has not been specified by the host...");
+    }
+
     //capabilites_configuration(timeout_detection, agent_tracing, ijon_tracing);
 
 #ifndef LEGACY_MODE      
-    void* payload_buffer = mmap((void*)0x4000000ULL, PAYLOAD_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-    hprintf("-> PAYLOAD AT %p\n", payload_buffer);
+    void* payload_buffer = mmap(NULL, input_buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-    //void* payload_buffer = mmap((void*)NULL, PAYLOAD_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    //void* payload_buffer = mmap((void*)NULL, input_buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 #else
-    kAFL_payload* payload_buffer = mmap((void*)NULL, PAYLOAD_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    kAFL_payload* payload_buffer = mmap(NULL, input_buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 #endif
-    _mlock(payload_buffer, (size_t)PAYLOAD_SIZE);
-    hprintf("mlock done\n");
-    memset(payload_buffer, 0, PAYLOAD_SIZE);
-    hprintf("memset done\n");
+    _mlock(payload_buffer, (size_t)input_buffer_size);
+    //hprintf("mlock done\n");
+    memset(payload_buffer, 0, input_buffer_size);
+    //hprintf("memset done\n");
+
+    hprintf("[init] payload buffer is mapped at %p (size: 0x%lx)\n", payload_buffer, input_buffer_size);
 
     kAFL_hypercall(HYPERCALL_KAFL_GET_PAYLOAD, (uintptr_t)payload_buffer);
-    hprintf("get payload done\n");
+    //hprintf("get payload done\n");
 
     //fail();
 
-    hprintf("payload_buffer at %p\n", payload_buffer);
-    memset(payload_buffer, 0, PAYLOAD_SIZE);
+    //hprintf("payload_buffer at %p\n", payload_buffer);
 
-    mprotect(payload_buffer, PAYLOAD_SIZE, PROT_EXEC);
+    mprotect(payload_buffer, input_buffer_size, PROT_EXEC);
 
     kAFL_ranges* range_buffer = mmap((void*)NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     memset(range_buffer, 0xff, 0x1000);
     kAFL_hypercall(HYPERCALL_KAFL_USER_RANGE_ADVISE, (uintptr_t)range_buffer);
- 
+
     for(i = 0; i < 4; i++){
         hprintf("Range %d Enabled: %x\t(%"PRIx64"-%"PRIx64")\n", i, (uint8_t)range_buffer->enabled[i], range_buffer->ip[i], range_buffer->size[i]);
     }
@@ -881,11 +906,11 @@ void nyx_init_start(void){
 
     uint8_t mlock_enabled = 1;
 
-    hprintf("asan_executable -> %d\n", asan_executable);
+    //hprintf("asan_executable -> %d\n", asan_executable);
 
     if(!asan_executable){
         if(_mlockall(MCL_CURRENT)){
-            hprintf("mlockall(MCL_CURRENT) failed!\n");
+            hprintf("[init ]mlockall(MCL_CURRENT) has failed!\n");
             /* dont' abort if mlockall fails */
             //kAFL_hypercall(HYPERCALL_KAFL_USER_ABORT, 0);
         }
@@ -913,7 +938,7 @@ void nyx_init_start(void){
                 if(mlock_enabled){
                     config_handler();
                     if(_mlockall(MCL_CURRENT)){
-                        hprintf("mlockall(MCL_CURRENT) failed!\n");
+                        hprintf("[init] mlockall(MCL_CURRENT) has failed!\n");
                         /* dont' abort if mlockall fails */
                         //kAFL_hypercall(HYPERCALL_KAFL_USER_ABORT, 0);
                     }
@@ -923,10 +948,10 @@ void nyx_init_start(void){
 #ifndef NET_FUZZ
 #ifdef LEGACY_MODE
             if(stdin_mode){
-                pipe(pipefd);
+                ret = pipe(pipefd);
             }
             else{
-                fd = open(output_filename, O_RDWR | O_CREAT | O_TRUNC);
+                fd = open(output_filename, O_RDWR | O_CREAT | O_TRUNC, O_RDWR);
             }
 #endif
             //mlockall(MCL_CURRENT); // | MCL_FUTURE);
@@ -947,7 +972,9 @@ void nyx_init_start(void){
                 close(pipefd[1]);  
             }
             else{
-                write(fd, payload_buffer->data, payload_buffer->size);
+                if((write(fd, payload_buffer->data, payload_buffer->size) == -1)){
+                    habort("Cannot write Nyx input to guest file -> write() failed!\n");
+                }
             }
 #else
             setup_interpreter(payload_buffer);
@@ -973,12 +1000,14 @@ void nyx_init_start(void){
             close(pipe_stdout_hprintf[1]);
             #endif          
             waitpid(pid, &status, WUNTRACED);
-            if(WIFSIGNALED(status)){
+
+            if(get_harness_state()->fast_exit_mode){
+                habort("Error: --fast_reload_mode is not supported in non-reload mode...");
+            }
+            
+            if(WIFSIGNALED(status) || WEXITSTATUS(status) == ASAN_EXIT_CODE){
                 kAFL_hypercall(HYPERCALL_KAFL_PANIC, 1);
             } 
-            else if (WEXITSTATUS(status) == ASAN_EXIT_CODE) {
-                kAFL_hypercall(HYPERCALL_KAFL_KASAN, 1);
-            }
 
             #ifdef REDIRECT_STDERR_TO_HPRINTF
             hprintf("------------STDERR-----------\n");
@@ -1044,7 +1073,7 @@ int __libc_start_main(int (*main) (int,char **,char **),
         void (*init) (void),
         void (*fini)(void),
         void (*rtld_fini)(void),
-        void (*stack_end));
+        void (*stack_end));    
 
 /*
 #ifdef NET_FUZZ
@@ -1059,9 +1088,8 @@ int __libc_start_main(int (*main) (int,char **,char **),
     /* Check if this is our target process we want to fuzz. 
      *       **Rewrite this code** 
      */
-    hprintf("ARGV[0] = %s\n", ubp_av[0]);
     if(strcmp(ubp_av[0], "./target_executable")){
-        hprintf("NOPE %s\n", ubp_av[0]);
+        hprintf("Warning: argv[0] = %s\n", ubp_av[0]);
         return original__libc_start_main(main,argc,ubp_av, init,fini,rtld_fini,stack_end);
     }
 

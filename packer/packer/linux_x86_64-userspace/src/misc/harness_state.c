@@ -4,7 +4,7 @@
 #include <dlfcn.h>
 #include "misc/harness_state.h"
 #include "netfuzz/syscalls.h"
-#include "kafl_user.h"
+#include "nyx.h"
 
 //#define DEBUG_HARNESS_STATE
 

@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "kafl_user.h"
+#include "nyx.h"
 #include "misc/struct_synth_report.h"
 
 // This stuff is in a separate file as the includes of Zydis.h import __assert which is already defined in crash_handler.c

@@ -9,7 +9,7 @@
 #include <stdio.h>
 extern "C" {
 #include "../libnyx.h"
-#include "../kafl_user.h"
+#include "../../packer/agents/nyx.h"
 }
 
 GuardedBuffer::GuardedBuffer(size_t new_len) {
