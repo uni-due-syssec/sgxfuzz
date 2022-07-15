@@ -22,7 +22,7 @@ default_config = {
     "PAYLOAD_PREFIX_SHM_SIZE": 0x1000,
     "BITMAP_SHM_SIZE": 0x10000,
     "AGENT_MAX_SIZE": 0x8000000,
-    "QEMU_KAFL_LOCATION": "",
+    "QEMU_KAFL_LOCATION": "QEMU-Nyx/x86_64-softmmu/qemu-system-x86_64",
     "RADAMSA_LOCATION": "radamsa/bin/radamsa",
     "TIMEOUT_TICK_FACTOR": 10.0,
     "ARITHMETIC_MAX": 35,
@@ -429,7 +429,7 @@ class FuzzerConfiguration(six.with_metaclass(Singleton)):
             if v is None or (type(v) is str and v == ""):
                 config.set(self.__config_section, k, "\"\"")
             else:
-                config.set(self.__config_section, k, v)
+                config.set(self.__config_section, k, str(v))
         config.write(f)
         f.close()
 

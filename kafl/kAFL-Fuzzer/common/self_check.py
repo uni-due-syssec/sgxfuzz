@@ -147,7 +147,7 @@ def check_vmx_pt():
     try:
         ret = ioctl(fd, KVM_VMX_PT_SUPPORTED, 0)
     except IOError:
-        print(FAIL + ERROR_PREFIX + "VMX_PT is not loaded!" + ENDC)
+        print(FAIL + ERROR_PREFIX + "KVM-Nyx is not loaded!" + ENDC)
         return False
     fd.close()
 
@@ -202,7 +202,7 @@ def check_qemu_version(config):
         return False
 
     if not os.path.exists(config.config_values["QEMU_KAFL_LOCATION"]):
-        print(FAIL + ERROR_PREFIX + "QEMU-PT executable does not exists..." + ENDC)
+        print(FAIL + ERROR_PREFIX + "QEMU-Nyx executable does not exist..." + ENDC)
         return False
 
     output = ""
