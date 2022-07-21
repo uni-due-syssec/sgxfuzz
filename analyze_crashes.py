@@ -168,12 +168,7 @@ class PostAnalysis:
         self.workdir = evaldir.joinpath("sgx_workdir")
         self.test_dir = self.workdir.joinpath("test_dir")
         self.target = evaldir.joinpath("fuzz-generic").absolute()
-        pack_sh = evaldir.joinpath("pack.sh").read_text()
-        if "-args" in pack_sh:
-            print("WARNING: -args in pack.sh ignored")
-            self.ecall = None  # int(pack_sh.split("-args", 1)[1].split()[0])  # TODO
-        else:
-            self.ecall = None
+        self.ecall = None
 
         self.proc_map = ProcMap(self.workdir.joinpath("dump/proc_maps.txt"))
 
