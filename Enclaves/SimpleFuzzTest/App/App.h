@@ -65,7 +65,7 @@ extern sgx_enclave_id_t global_eid;    /* global enclave id */
 extern "C" {
 #endif
 
-int32_t fuzz_test(char* str);
+int32_t fuzz_test(char* str, int str_len);
 
 
 #if defined(__cplusplus)

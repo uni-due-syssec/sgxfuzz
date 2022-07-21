@@ -43,7 +43,7 @@ int main()
         return -1;
     }
     printf("Created enclave: %p\n", global_eid);
-    x = fuzz_test("TEST");
+    x = fuzz_test("TEST", 5);
     printf("Ret: 0x%x\n", x);
     sgx_destroy_enclave(global_eid);
 
