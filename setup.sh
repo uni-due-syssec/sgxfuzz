@@ -116,7 +116,7 @@ if [[ ! -d venv-python3 ]]; then
 
 	PY3=$(realpath venv-python3/bin/python3)
 
-	$PY3 -m pip install six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep
+	$PY3 -m pip install six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep tqdm hexdump
 fi
 }
 

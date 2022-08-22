@@ -9,7 +9,8 @@ binary-only approach. The prototype consists of an enclave dumper that
 extracts enclaves memory from distribution formats, a fuzzing setup to fuzz
 extracted enclave, as well as a series of scripts to perform result
 aggregation. The fuzzing setup is the core of SGXFuzz and is built upon the
-[kAFL fuzzer](https://github.com/IntelLabs/kAFL) and the [Nyx snapshotting and fuzzing engine](https://nyx-fuzz.com). We extend the existing code of
+[kAFL fuzzer](https://github.com/IntelLabs/kAFL) and the [Nyx snapshotting
+and fuzzing engine](https://nyx-fuzz.com). We extend the existing code of
 kAFL to accommodate our structure synthesis in Python. The Nyx fuzzing engine
 utilizes the Intel PT CPU extension to get code coverage information but does
 not contain any changes for SGXFuzz. Finally, we provide several scripts to
@@ -70,7 +71,7 @@ sudo apt install \
   * KVM-Nyx: https://github.com/nyx-fuzz/KVM-Nyx#setup-kvm-nyx-binaries
   * (Virtual) environments for python2 and python3 and install
     * python2: configparser mmh3 lz4 psutil ipdb msgpack inotify
-    * python3: six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep
+    * python3: six python-dateutil msgpack mmh3 lz4 psutil fastrand inotify pgrep tqdm hexdump
   * Install zydis (`cd zydis && cmake -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_CXX_FLAGS="-fPIC" . && sudo make install && dependencies/zycore && mkdir build && cd build && cmake .. && make && sudo make install `)
   * Prepare the ramfs guest image (`cd packer/linux_initramfs/ && ./pack.sh`)
 
@@ -122,6 +123,10 @@ nyx_packer.py <enclave-runner> <fuzz-folder> m64 \
 Finally, the fuzzing can be started using the kAFL fuzzing frontend. The exact
 command can be found in the `run_example.sh` script.
 
+If desired, manually crafted seeds can be added to the \verb+imports+ folder.
+Each seed is a file consisting of the ECall ID, the serialized structure
+definition, and the contents of the buffers.
+
 ### Result Aggregation
 
 **Display synthesized structures:**
@@ -132,7 +137,7 @@ display-structs.py <path/to/fuzzing-workdir> \
 ```
 
 The script displays the evolvement of the synthesized structure in a tree
-format for each ecall index, with the ecall index being zero-based. The
+format for each ECall index, with the ECall index being zero-based. The
 leaves show the final evolvement of the synthesized structures. Each leave
 shows the synthesized structure in a specific format.
 
@@ -142,8 +147,11 @@ right. This string denotes a structure of **40**\,Bytes, which has two
 parent and is defined the same way: A size of **4** and zero(**0**) children.
 The second child has a size of **7** and also zero children. Further, the
 sizes may be annotated with their address (`40:0x7ffff7faafd8`).
+Additional types include buffers partially (on the edge) of the enclave's
+memory (P) and SizeOf (S) buffers of which the size is written to a defined
+offset.
 
-If needed, this script shows how to parse and dump these strings:
+This script shows how to parse and dump these strings:
 
 `kafl/kAFL-Fuzzer/fuzzer/technique/struct_recovery.py`
 
@@ -153,6 +161,15 @@ If needed, this script shows how to parse and dump these strings:
 analyze_crashes.py <eval-dir> \
   -0 --np --no-ptr-0x7ff --no-large-diff
 ```
+
+`analyze_crashes.py` script iterates through all crashes found by the fuzzer.
+The script performs filtering and will only display valid crashes. However,
+manual duplication of the crashes is required. The flags supplied to the
+script do the filtering according to the described filtering techniques in
+the paper. The script displays useful information to understand the crash:
+the ECall ID, the signal(usually Segmentation Fault), pc
+(absolute/relative), the disassembled instruction, and addresses used for
+memory access.
 
 **Calculate Coverage:**
 
